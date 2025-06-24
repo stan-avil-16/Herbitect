@@ -2,3 +2,4 @@ Flask
 Flask-Mail
 flask-cors
 gunicorn 
+firebase-admin 
