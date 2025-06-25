@@ -111,5 +111,36 @@ def verify_otp():
         print(f"Error verifying OTP: {e}")
         return jsonify({'success': False, 'error': 'An internal server error occurred.'})
 
+@app.route('/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json()
+    email = data.get('email')
+    otp = data.get('otp')
+    new_password = data.get('new_password')
+    if not all([email, otp, new_password, db]):
+        return jsonify({'success': False, 'error': 'Email, OTP, and new password are required.'}), 400
+    try:
+        # 1. Verify OTP (must exist and match)
+        doc_ref = db.collection('otps').document(email)
+        doc = doc_ref.get()
+        if not doc.exists:
+            return jsonify({'success': False, 'error': 'OTP not found. It may have expired.'})
+        stored_data = doc.to_dict()
+        stored_otp = stored_data.get('otp')
+        stored_timestamp = stored_data.get('timestamp')
+        if datetime.now(timezone.utc) - stored_timestamp > timedelta(minutes=10):
+            doc_ref.delete()
+            return jsonify({'success': False, 'error': 'OTP has expired.'})
+        if otp != stored_otp:
+            return jsonify({'success': False, 'error': 'Invalid OTP.'})
+        # 2. Update password in Firebase Auth
+        user = auth.get_user_by_email(email)
+        auth.update_user(user.uid, password=new_password)
+        doc_ref.delete()  # Remove OTP after use
+        return jsonify({'success': True, 'message': 'Password updated successfully.'})
+    except Exception as e:
+        print(f"Error resetting password: {e}")
+        return jsonify({'success': False, 'error': 'Failed to reset password.'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 10000))) 
